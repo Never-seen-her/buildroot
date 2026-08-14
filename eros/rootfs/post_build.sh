@@ -23,6 +23,10 @@ rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 echo "Removed C++ libraries"
 
 
+#清理etc？？？  是否有其他方法，可以避免安装S11moduels
+rm -rf "${TARGET_DIR}/etc/init.d/S11modules"
+echo "Removed S11modules"
 
 # 更多的清理规则可以按需添加...
 # 例如: rm -rf "${TARGET_DIR}/usr/share/doc"
+
