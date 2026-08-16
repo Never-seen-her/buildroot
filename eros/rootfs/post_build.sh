@@ -15,8 +15,9 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 echo "Removed libgomp"
 
 # 如果你确定没有程序需要 libm，(624K)
-rm -f "${TARGET_DIR}/usr/lib/libm.so"*
-echo "Removed libm"
+# rm -f "${TARGET_DIR}/usr/lib/libm.so"*
+# echo "Removed libm"
+# ==> ethtool 需要 libm.so.6, 所以不能删除
 
 # 1.5M
 rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
