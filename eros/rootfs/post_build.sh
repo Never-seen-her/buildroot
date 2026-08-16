@@ -15,14 +15,19 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 echo "Removed libgomp"
 
 # 如果你确定没有程序需要 libm，(624K)
-rm -f "${TARGET_DIR}/usr/lib/libm.so"*
-echo "Removed libm"
+# rm -f "${TARGET_DIR}/usr/lib/libm.so"*
+# echo "Removed libm"
+# ==> ethtool 需要 libm.so.6, 所以不能删除
 
 # 1.5M
 rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 echo "Removed C++ libraries"
 
 
+#清理etc？？？  是否有其他方法，可以避免安装S11moduels
+rm -rf "${TARGET_DIR}/etc/init.d/S11modules"
+echo "Removed S11modules"
 
 # 更多的清理规则可以按需添加...
 # 例如: rm -rf "${TARGET_DIR}/usr/share/doc"
+
