@@ -30,6 +30,8 @@ rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 #==========================================================
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
 
+#  增加远程ssh root 登陆权限
+sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
 #==========================================================
 #           /etc/init.d 相关
 #==========================================================
@@ -40,6 +42,7 @@ rm -rf "${TARGET_DIR}/etc/init.d/S11modules"
 
 cp -f "${SCRIPT_DIR}/etc/init.d/S40network" "${TARGET_DIR}/etc/init.d/S40network"
 cp -f "${SCRIPT_DIR}/etc/init.d/S50sshd" "${TARGET_DIR}/etc/init.d/S50sshd"
+
 
 
 
