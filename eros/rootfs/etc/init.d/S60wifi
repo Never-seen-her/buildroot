@@ -1,0 +1,50 @@
+#!/bin/sh
+#
+# Start usb WiFi network
+#
+
+WLAN_IFACE="wlan0"
+WPA_CONF="/etc/wpa_supplicant.conf"
+
+case "$1" in
+  start)
+    printf "Starting usb WiFi network: "
+    # Unblock wifi if possible
+    [ -x /usr/sbin/rfkill ] && rfkill unblock wifi
+    # Bring interface up
+    ip link set $WLAN_IFACE up
+    # Start wpa_supplicant
+    wpa_supplicant -B -i $WLAN_IFACE -c $WPA_CONF
+    if [ $? -ne 0 ]; then
+        echo "FAIL (wpa_supplicant)"
+        exit 1
+    fi
+    # Wait a bit for association
+    sleep 3
+    # Obtain IP with timeout (udhcpc -t tries)
+    udhcpc -i $WLAN_IFACE -t 5 -T 3
+    if [ $? -eq 0 ]; then
+        echo "OK"
+    else
+        echo "FAIL (DHCP)"
+        exit 1
+    fi
+    ;;
+  stop)
+    printf "Stopping WiFi network: "
+    pkill -f "wpa_supplicant -i $WLAN_IFACE" 2>/dev/null
+    pkill -f "udhcpc -i $WLAN_IFACE" 2>/dev/null
+    ip link set $WLAN_IFACE down 2>/dev/null
+    echo "OK"
+    ;;
+  restart|reload)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+esac
+
+exit $?

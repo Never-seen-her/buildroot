@@ -26,6 +26,13 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 
 #==========================================================
+#           依赖固件
+#==========================================================
+# usb wifi
+mkdir -p "${TARGET_DIR}/lib/firmware/rtw88"
+cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/rtw88/"
+
+#==========================================================
 #           etc 系统个性化配置 相关
 #==========================================================
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
@@ -40,10 +47,13 @@ rm -f "${TARGET_DIR}/etc/init.d/S01seedrng"
 #清理etc？？？  是否有其他方法，可以避免安装S11moduels
 rm -rf "${TARGET_DIR}/etc/init.d/S11modules"
 
+# ethernet ssh
 cp -f "${SCRIPT_DIR}/etc/init.d/S40network" "${TARGET_DIR}/etc/init.d/S40network"
 cp -f "${SCRIPT_DIR}/etc/init.d/S50sshd" "${TARGET_DIR}/etc/init.d/S50sshd"
 
-
+# usb wifi
+cp "${SCRIPT_DIR}/etc/wpa_supplicant.conf" "${TARGET_DIR}/etc/wpa_supplicant.conf"
+cp -f "${SCRIPT_DIR}/etc/init.d/S60wifi" "${TARGET_DIR}/etc/init.d/S60wifi"
 
 
 
