@@ -1,0 +1,11 @@
+#!/bin/sh
+
+TARGET_DIR="$1"
+
+cat >> "${TARGET_DIR}/etc/profile" <<'EOF'
+
+# Custom prompt
+export PS1='\e[01;34m\u@$PWD\e[00m$ '
+EOF
+
+exit 0

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+TARGET_DIR="$1"
+
+cat >> "${TARGET_DIR}/etc/ssh/sshd_config" <<'EOF'
+
+# Custom prompt
+PermitRootLogin yes
+PasswordAuthentication yes
+EOF
+
+exit 0
