@@ -23,7 +23,7 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 # ==> ethtool 需要 libm.so.6, 所以不能删除
 
 # 1.5M
-rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
+#rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 
 #==========================================================
 #           依赖固件
@@ -38,7 +38,7 @@ cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/r
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
 
 #  增加远程ssh root 登陆权限
-sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
+#sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
 #==========================================================
 #           /etc/init.d 相关
 #==========================================================

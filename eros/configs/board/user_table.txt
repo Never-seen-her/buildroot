@@ -1,0 +1,2 @@
+#<username> <uid> <group> <gid> <password> <home> <shell> <groups> <comment>
+eros -1 eros -1 =Linux123 /tmp /bin/sh - "Eros User"

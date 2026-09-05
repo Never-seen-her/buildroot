@@ -1,12 +1,17 @@
 #!/bin/sh
 
 TARGET_DIR="$1"
+MARKER="# SSH settings added by buildroot eros"
 
-cat >> "${TARGET_DIR}/etc/ssh/sshd_config" <<'EOF'
+if grep -Fxq "$MARKER" "${TARGET_DIR}/etc/ssh/sshd_config"; then
+    echo "SSH settings already customized, skipping"
+else
+    cat >> "${TARGET_DIR}/etc/ssh/sshd_config" <<'EOF'
 
-# Custom prompt
+# SSH settings added by buildroot eros
 PermitRootLogin yes
 PasswordAuthentication yes
 EOF
+fi
 
 exit 0
