@@ -156,8 +156,13 @@ MESA3D_DEPENDENCIES += host-python-ply
 endif
 
 ifeq ($(BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER),y)
+# Only the host precomp compiler (and its host dependencies) is needed, the
+# target is built with -Dmesa-clc=system -Dprecomp-compiler=system. Do not
+# pull the target spirv-tools/spirv-llvm-translator in: they would install
+# libSPIRV-Tools/libLLVMSPIRVLib on the target and would make libgallium and
+# llvm-spirv link against them.
 MESA3D_CONF_OPTS += -Dmesa-clc=system -Dprecomp-compiler=system
-MESA3D_DEPENDENCIES += host-mesa3d spirv-llvm-translator spirv-tools
+MESA3D_DEPENDENCIES += host-mesa3d
 endif
 
 ifeq ($(BR2_PACKAGE_MESA3D_VULKAN_DRIVER),)
@@ -312,6 +317,17 @@ HOST_MESA3D_CONF_OPTS = \
 	-Dprecomp-compiler=enabled \
 	-Dglx=disabled \
 	-Dvulkan-drivers=""
+
+# Mesa refuses to configure if its cpp_rtti option does not match the RTTI
+# support of the LLVM it is built against. This is normally always true when
+# the host precomp compiler is built (host-mesa3d is only built when a driver
+# selects BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER), but now that the target
+# LLVM can be disabled, BR2_PACKAGE_LLVM_RTTI may be unset, so mirror it here.
+ifeq ($(BR2_PACKAGE_LLVM_RTTI),y)
+HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=true
+else
+HOST_MESA3D_CONF_OPTS += -Dcpp_rtti=false
+endif
 
 HOST_MESA3D_DEPENDENCIES = \
 	host-libclc \

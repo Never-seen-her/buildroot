@@ -21,11 +21,27 @@ if BR2_PACKAGE_MESA3D
 config BR2_PACKAGE_MESA3D_NEEDS_ELFUTILS
 	bool
 
+# The precomp compiler (panfrost_compile, mesa_clc, vtn_bindgen2) is built
+# in host-mesa3d, and the target build only consumes it through
+# -Dmesa-clc=system -Dprecomp-compiler=system. In that mode mesa sets
+# 'with_clc = with_gallium_rusticl' (see meson.build), i.e. target clang
+# and libclc are only needed when RustiCL is enabled.
+#
+# Do *not* select BR2_PACKAGE_MESA3D_OPENCL, BR2_PACKAGE_SPIRV_LLVM_TRANSLATOR
+# nor BR2_PACKAGE_SPIRV_TOOLS here: those target packages would drag llvm,
+# clang, libclc, libLLVMSPIRVLib and libSPIRV-Tools (~220 MB) onto the target
+# for no reason (libgallium only links libSPIRV-Tools because it is found in
+# staging, see -Dspirv-tools). OpenCL support remains opt-in through the
+# BR2_PACKAGE_MESA3D_OPENCL menuconfig.
+#
+# Only the host side is needed: mesa3d.mk pulls host-llvm, host-clang,
+# host-libclc, host-spirv-llvm-translator and host-spirv-tools in directly
+# through HOST_MESA3D_DEPENDENCIES. Since those host packages are now used
+# without their target counterpart being selected, the host cmake version
+# requirement has to be propagated here explicitly.
 config BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER
 	bool
-	select BR2_PACKAGE_MESA3D_OPENCL
-	select BR2_PACKAGE_SPIRV_LLVM_TRANSLATOR
-	select BR2_PACKAGE_SPIRV_TOOLS
+	select BR2_HOST_CMAKE_AT_LEAST_3_20 # host-{llvm,clang,libclc} need >= 3.20
 
 config BR2_PACKAGE_MESA3D_LLVM
 	bool "llvm support"
@@ -205,7 +221,11 @@ config BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_NOUVEAU
 config BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST
 	bool "Gallium panfrost driver"
 	depends on BR2_TOOLCHAIN_HAS_SYNC_4 || !BR2_PACKAGE_XORG7 # libxshmfence
-	depends on BR2_PACKAGE_MESA3D_LLVM
+	# Mesa's panfrost driver itself does not use LLVM at all (with_llvm is
+	# only forced by i915/llvmpipe/r300/radeonsi/lavapipe). It only needs
+	# the precomp compiler (panfrost_compile), which is built for the host
+	# by host-mesa3d, so do not depend on BR2_PACKAGE_MESA3D_LLVM which
+	# would pull target LLVM (65 MB) in.
 	select BR2_PACKAGE_MESA3D_GALLIUM_DRIVER
 	select BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER
 	select BR2_PACKAGE_MESA3D_RUSTICL_SUPPORTED_DRIVER

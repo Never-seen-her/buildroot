@@ -1,2 +1,7 @@
 #<username> <uid> <group> <gid> <password> <home> <shell> <groups> <comment>
-eros -1 eros -1 =Linux123 /tmp /bin/sh - "Eros User"
+#eros -1 eros -1 =Linux123 /tmp /bin/sh - "Eros User"
+eros -1 eros -1 =Linux123 /tmp /bin/sh video,input,render,seat,wayland Eros_User
+- - seat -1 - - - - Seat management group
+- - render -1 - - - - DRI rendering nodes
+- - wayland -1 - - - - Wayland socket group
+

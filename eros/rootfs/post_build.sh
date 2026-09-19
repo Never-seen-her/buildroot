@@ -55,5 +55,13 @@ cp -f "${SCRIPT_DIR}/etc/init.d/S50sshd" "${TARGET_DIR}/etc/init.d/S50sshd"
 cp "${SCRIPT_DIR}/etc/wpa_supplicant.conf" "${TARGET_DIR}/etc/wpa_supplicant.conf"
 cp -f "${SCRIPT_DIR}/etc/init.d/S60wifi" "${TARGET_DIR}/etc/init.d/S60wifi"
 
+# weston
+mkdir -p "${TARGET_DIR}/etc/xdg/weston/"
+cp -r "${SCRIPT_DIR}/etc/xdg/weston/weston.ini" "${TARGET_DIR}/etc/xdg/weston/"
 
+# weston autostart + Wayland/WPE default environment variables
+# (started last so devices/firmware are ready; exported vars apply to
+#  weston and every process it spawns)
+cp -f "${SCRIPT_DIR}/etc/init.d/S99weston" "${TARGET_DIR}/etc/init.d/S99weston"
+chmod 755 "${TARGET_DIR}/etc/init.d/S99weston"
 

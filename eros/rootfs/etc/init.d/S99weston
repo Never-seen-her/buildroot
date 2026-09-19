@@ -1,0 +1,129 @@
+#!/bin/sh
+#
+# weston	Starts weston (Wayland compositor, DRM/KMS backend).
+#
+# Unlike sshd, weston does not fork itself, so it has to be started with
+# start-stop-daemon --background. Without it the daemon would stay a child
+# of this script and die as soon as rcS (or this script) exits.
+#
+
+#==========================================================
+#		Default environment
+#		(inherited by weston and everything it starts)
+#==========================================================
+# Must be a private directory (mode 0700) owned by the user running weston,
+# and it must be empty on every boot -> keep it on tmpfs.
+export XDG_RUNTIME_DIR=/tmp/wayland
+# Must match --socket= in $OPTS below.
+export WAYLAND_DISPLAY=wayland-1
+
+# WPE / Cog cache and data directories, also on tmpfs (avoid eMMC/SD writes).
+export XDG_CACHE_HOME=/tmp/weston/wpe-cache
+export XDG_DATA_HOME=/tmp/weston/wpe-data
+
+# Cog: fullscreen
+export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
+# Cog: force WebKit compositing mode (hardware accelerated)
+export WEBKIT_FORCE_COMPOSITING_MODE=1
+
+DAEMON="weston"
+EXEC="/usr/bin/$DAEMON"
+
+OPTS="--backend=drm-backend.so --socket=$WAYLAND_DISPLAY"
+
+PIDFILE="/tmp/$DAEMON/$DAEMON.pid"
+LOGFILE="/tmp/$DAEMON/$DAEMON.log"
+
+prepare() {
+	# weston refuses to start if the runtime dir has wrong permissions
+	mkdir -p "$XDG_RUNTIME_DIR"
+	chmod 700 "$XDG_RUNTIME_DIR"
+	# drop socket / lock left over from an unclean shutdown
+	rm -f "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" \
+	      "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
+
+	mkdir -p "$(dirname "$PIDFILE")" "$XDG_CACHE_HOME" "$XDG_DATA_HOME"
+	touch "$LOGFILE"
+}
+
+start() {
+	prepare
+
+	printf "Starting %s: " "$DAEMON"
+	# -b : fork into a new session, so weston outlives this script
+	# -m : let start-stop-daemon write the daemon PID (-p is required with -m)
+	# This busybox has no -O/--output, so hand the log file over by
+	# redirecting the command itself: the daemonised child inherits
+	# stdout/stderr (only stdin is sent to /dev/null by -b).
+	start-stop-daemon --start --background --make-pidfile \
+		--pidfile "$PIDFILE" \
+		--exec "$EXEC" -- $OPTS \
+		>> "$LOGFILE" 2>&1
+	status=$?
+	if [ "$status" -ne 0 ]; then
+		echo "FAIL"
+		return "$status"
+	fi
+
+	# start-stop-daemon returns as soon as weston is exec'ed; wait for the
+	# Wayland socket so that the boot log shows a real result
+	i=0
+	while [ "$i" -lt 50 ]; do
+		[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && break
+		usleep 100000 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	if [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]; then
+		echo "OK"
+	else
+		echo "FAIL (see $LOGFILE)"
+		return 1
+	fi
+	return 0
+}
+
+stop() {
+	printf "Stopping %s: " "$DAEMON"
+	# --exec makes start-stop-daemon verify the PID really is weston, so a
+	# stale pidfile cannot make us kill an unrelated process
+	start-stop-daemon --stop --quiet \
+		--pidfile "$PIDFILE" --exec "$EXEC"
+	status=$?
+
+	# busybox ignores -R/--retry: wait for a clean exit, then force it
+	i=0
+	while [ "$i" -lt 5 ] && [ -n "$(pidof "$DAEMON")" ]; do
+		usleep 100000 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	for p in $(pidof "$DAEMON"); do
+		kill -9 "$p" 2>/dev/null
+	done
+
+	rm -f "$PIDFILE" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" \
+	      "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY.lock"
+	echo "OK"
+	return "$status"
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart)
+		restart
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+
+exit $?
