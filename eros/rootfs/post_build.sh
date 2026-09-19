@@ -23,7 +23,7 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 # ==> ethtool 需要 libm.so.6, 所以不能删除
 
 # 1.5M
-rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
+#rm -rf "${TARGET_DIR}/usr/lib/libstdc++.so"*
 
 #==========================================================
 #           依赖固件
@@ -38,7 +38,7 @@ cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/r
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
 
 #  增加远程ssh root 登陆权限
-sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
+#sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
 #==========================================================
 #           /etc/init.d 相关
 #==========================================================
@@ -55,5 +55,13 @@ cp -f "${SCRIPT_DIR}/etc/init.d/S50sshd" "${TARGET_DIR}/etc/init.d/S50sshd"
 cp "${SCRIPT_DIR}/etc/wpa_supplicant.conf" "${TARGET_DIR}/etc/wpa_supplicant.conf"
 cp -f "${SCRIPT_DIR}/etc/init.d/S60wifi" "${TARGET_DIR}/etc/init.d/S60wifi"
 
+# weston
+mkdir -p "${TARGET_DIR}/etc/xdg/weston/"
+cp -r "${SCRIPT_DIR}/etc/xdg/weston/weston.ini" "${TARGET_DIR}/etc/xdg/weston/"
 
+# weston autostart + Wayland/WPE default environment variables
+# (started last so devices/firmware are ready; exported vars apply to
+#  weston and every process it spawns)
+cp -f "${SCRIPT_DIR}/etc/init.d/S99weston" "${TARGET_DIR}/etc/init.d/S99weston"
+chmod 755 "${TARGET_DIR}/etc/init.d/S99weston"
 

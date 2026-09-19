@@ -19,10 +19,8 @@ case "$1" in
         echo "FAIL (wpa_supplicant)"
         exit 1
     fi
-    # Wait a bit for association
-    sleep 3
     # Obtain IP with timeout (udhcpc -t tries)
-    udhcpc -i $WLAN_IFACE -t 5 -T 3
+    udhcpc -i $WLAN_IFACE -t 5 -T 2 && iw dev $WLAN_IFACE link &
     if [ $? -eq 0 ]; then
         echo "OK"
     else

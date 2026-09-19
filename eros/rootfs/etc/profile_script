@@ -1,11 +1,17 @@
 #!/bin/sh
 
 TARGET_DIR="$1"
+MARKER="# profile settings added by buildroot eros"
 
-cat >> "${TARGET_DIR}/etc/profile" <<'EOF'
+if grep -Fxq "$MARKER" "${TARGET_DIR}/etc/profile"; then
+    # 已存在，可替换或跳过
+    echo "PS1 already customized, skipping"
+else
+    cat >> "${TARGET_DIR}/etc/profile" <<'EOF'
 
 # Custom prompt
 export PS1='\e[01;34m\u@$PWD\e[00m$ '
 EOF
+fi
 
 exit 0
