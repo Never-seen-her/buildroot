@@ -37,6 +37,10 @@ cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/r
 #==========================================================
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
 
+cp "${SCRIPT_DIR}/package/wifi/wifi_scan" "${TARGET_DIR}/usr/bin/wifi_scan"
+mkdir -p "${TARGET_DIR}/usr/share/icons/"
+cp -rf "${SCRIPT_DIR}/package/icons/"* "${TARGET_DIR}/usr/share/icons/"
+
 #  增加远程ssh root 登陆权限
 #sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
 #==========================================================
