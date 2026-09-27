@@ -29,8 +29,9 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 #           依赖固件
 #==========================================================
 # usb wifi
-mkdir -p "${TARGET_DIR}/lib/firmware/rtw88"
-cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/rtw88/"
+#move to kernel image(CONFIG_EXTRA_FIRMWARE)
+#mkdir -p "${TARGET_DIR}/lib/firmware/rtw88"
+#cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/rtw88/"
 
 #==========================================================
 #           etc 系统个性化配置 相关
