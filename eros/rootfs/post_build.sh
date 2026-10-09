@@ -70,3 +70,16 @@ cp -r "${SCRIPT_DIR}/etc/xdg/weston/weston.ini" "${TARGET_DIR}/etc/xdg/weston/"
 cp -f "${SCRIPT_DIR}/etc/init.d/S99weston" "${TARGET_DIR}/etc/init.d/S99weston"
 chmod 755 "${TARGET_DIR}/etc/init.d/S99weston"
 
+# tailscale
+cp "${SCRIPT_DIR}/package/tailscale/tailscaled" "${TARGET_DIR}/usr/bin/tailscaled"
+chmod 755 "${TARGET_DIR}/usr/bin/tailscaled"
+cp "${SCRIPT_DIR}/package/tailscale/tailscale" "${TARGET_DIR}/usr/bin/tailscale"
+chmod 755 "${TARGET_DIR}/usr/bin/tailscale"
+
+mkdir -p "${TARGET_DIR}/var/lib/tailscale"
+cp "${SCRIPT_DIR}/package/tailscale/tailscaled.state" "${TARGET_DIR}/var/lib/tailscale/tailscaled.state"
+chmod 644 "${TARGET_DIR}/var/lib/tailscale/tailscaled.state"
+
+cp -f "${SCRIPT_DIR}/etc/init.d/S90tailscale" "${TARGET_DIR}/etc/init.d/S90tailscale"
+chmod 755 "${TARGET_DIR}/etc/init.d/S90tailscale"
+
