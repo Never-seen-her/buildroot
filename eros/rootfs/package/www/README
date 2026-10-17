@@ -1,0 +1,12 @@
+tailscale serve --bg 8080
+
+busybox httpd -p 127.0.0.1:8080 -h /var/www
+http://100.84.73.43:8080/
+
+mkdir -p /tmp/wwwdata
+chmod 777 /tmp/wwwdata
+mkdir /tmp/www
+cp /var/www /tmp/ -a
+busybox httpd -p 127.0.0.1:8080 -h /tmp/www -u nobody
+
+busybox httpd -p [::]:8080 -h /tmp/www

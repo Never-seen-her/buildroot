@@ -83,3 +83,24 @@ chmod 644 "${TARGET_DIR}/var/lib/tailscale/tailscaled.state"
 cp -f "${SCRIPT_DIR}/etc/init.d/S90tailscale" "${TARGET_DIR}/etc/init.d/S90tailscale"
 chmod 755 "${TARGET_DIR}/etc/init.d/S90tailscale"
 
+mkdir -p "${TARGET_DIR}/root/.cloudflared"
+#cp "${SCRIPT_DIR}/package/cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/cert.pem"
+cp "${SCRIPT_DIR}/package/cloudflared/sec.json" "${TARGET_DIR}/root/.cloudflared/sec.json"
+chmod 700 "${TARGET_DIR}/root/.cloudflared"
+chmod 600 "${TARGET_DIR}/root/.cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/sec.json"
+mkdir -p "${TARGET_DIR}/etc/cloudflared"
+cp "${SCRIPT_DIR}/package/cloudflared/config.yml" "${TARGET_DIR}/etc/cloudflared/config.yml"
+cp -f "${SCRIPT_DIR}/etc/init.d/S92cloudflared" "${TARGET_DIR}/etc/init.d/S92cloudflared"
+chmod 755 "${TARGET_DIR}/etc/init.d/S92cloudflared"
+cp "${SCRIPT_DIR}/package/cloudflared/cloudflared" "${TARGET_DIR}/usr/bin/cloudflared"
+chmod 755 "${TARGET_DIR}/usr/bin/cloudflared"
+
+
+# BusyBox httpd for the local web UI
+cp -f "${SCRIPT_DIR}/etc/init.d/S95httpd" "${TARGET_DIR}/etc/init.d/S95httpd"
+chmod 755 "${TARGET_DIR}/etc/init.d/S95httpd"
+
+mkdir -p "${TARGET_DIR}/var/www"
+cp -r "${SCRIPT_DIR}/package/www/"* "${TARGET_DIR}/var/www/"
+chmod -R 755 "${TARGET_DIR}/var/www/"
+

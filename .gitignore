@@ -14,3 +14,8 @@
 *~
 *.pyc
 /br.log
+
+eros/rootfs/package/tailscale/tailscaled.state
+eros/rootfs/package/cloudflared/cert.pem
+eros/rootfs/package/cloudflared/sec.json
+

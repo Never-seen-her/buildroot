@@ -1,0 +1,57 @@
+#!/bin/sh
+#
+# Serve the web root on localhost using BusyBox httpd.
+#
+
+DAEMON="/bin/busybox"
+PIDFILE="/var/run/httpd.pid"
+WWW_DIR="/tmp/www"
+
+start() {
+	printf "Starting BusyBox httpd: "
+	mkdir -p "$WWW_DIR" || return 1
+	cp -a /var/www/. "$WWW_DIR/" || return 1
+
+	start-stop-daemon --start --background --make-pidfile \
+		--pidfile "$PIDFILE" --exec "$DAEMON" -- \
+		httpd -f -p 127.0.0.1:8080 -h "$WWW_DIR"
+	status=$?
+	if [ "$status" -eq 0 ]; then
+		echo "OK"
+	else
+		echo "FAIL"
+	fi
+	return "$status"
+}
+
+stop() {
+	printf "Stopping BusyBox httpd: "
+	if [ -f "$PIDFILE" ]; then
+		start-stop-daemon --stop --pidfile "$PIDFILE" --exec "$DAEMON"
+		status=$?
+		if [ "$status" -ne 0 ]; then
+			echo "FAIL"
+			return "$status"
+		fi
+		rm -f "$PIDFILE"
+	fi
+	echo "OK"
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		stop && start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|reload}"
+		exit 1
+		;;
+esac
+
+exit $?

@@ -1,0 +1,7 @@
+tunnel: rk-tunnel
+credentials-file: /root/.cloudflared/sec.json
+
+ingress:
+  - hostname: lkeros.top
+    service: http://localhost:8080
+  - service: http_status:404
