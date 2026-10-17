@@ -1,0 +1,337 @@
+#!/bin/sh
+#
+# Interactive WiFi management script
+#
+
+WLAN_IFACE="${WLAN_IFACE:-wlan0}"
+DEFAULT_WPA_CONF="/etc/wpa_supplicant.conf"
+WPA_PID="/tmp/wpa_supplicant.${WLAN_IFACE}.pid"
+UDHCPC_PID="/tmp/udhcpc.${WLAN_IFACE}.pid"
+PING_TARGET="8.8.8.8"
+CONNECT_WAIT=30
+DHCP_TRIES=10
+DHCP_TIMEOUT=2
+SCAN_FILE="/tmp/wifi_scan_$$"
+
+# ---------------- Basic utilities ----------------
+
+msg()  { printf '%s\n' "$*"; }
+err()  { printf 'Error: %s\n' "$*" >&2; }
+
+need_root() {
+    [ "$(id -u)" = "0" ] || { err "Please run this script as root"; exit 1; }
+}
+
+need_cmd() {
+    command -v "$1" >/dev/null 2>&1 || { err "Missing command: $1"; exit 1; }
+}
+
+pause() {
+    printf 'Press Enter to continue...'
+    read _dummy
+}
+
+cleanup() { rm -f "$SCAN_FILE"; }
+trap cleanup EXIT INT TERM
+
+# ---------------- WiFi on/off ----------------
+
+wifi_up() {
+    command -v rfkill >/dev/null 2>&1 && rfkill unblock wifi 2>/dev/null
+    ip link set "$WLAN_IFACE" up 2>/dev/null
+}
+
+stop_wpa() {
+    if [ -f "$WPA_PID" ]; then
+        kill "$(cat "$WPA_PID")" 2>/dev/null
+        rm -f "$WPA_PID"
+    fi
+    if [ -f "$UDHCPC_PID" ]; then
+        kill "$(cat "$UDHCPC_PID")" 2>/dev/null
+        rm -f "$UDHCPC_PID"
+    fi
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -f "wpa_supplicant.*$WLAN_IFACE" 2>/dev/null
+        pkill -f "udhcpc.*$WLAN_IFACE" 2>/dev/null
+    fi
+    sleep 1
+}
+
+wifi_down() {
+    stop_wpa
+    ip link set "$WLAN_IFACE" down 2>/dev/null
+}
+
+# ---------------- Scan ----------------
+
+scan_wifi() {
+    wifi_up
+    msg "Scanning WiFi, please wait..."
+    iw dev "$WLAN_IFACE" scan 2>/dev/null | awk '
+        /^BSS/ { ssid = "" }
+        /^[ \t]*SSID:/ {
+            s = $0
+            sub(/^[ \t]*SSID:[ \t]*/, "", s)
+            gsub(/\r/, "", s)
+            if (s != "" && !(s in seen)) {
+                seen[s] = 1
+                print s
+            }
+        }
+    ' > "$SCAN_FILE"
+}
+
+do_scan_and_show() {
+    scan_wifi
+    if [ ! -s "$SCAN_FILE" ]; then
+        msg "No WiFi found"
+        return 1
+    fi
+    n=$(wc -l < "$SCAN_FILE")
+    msg "Found $n WiFi networks:"
+    i=1
+    while IFS= read -r line; do
+        printf '   %2d) %s\n' "$i" "$line"
+        i=$((i + 1))
+    done < "$SCAN_FILE"
+}
+
+# ---------------- Write wpa_supplicant.conf ----------------
+
+write_wpa_conf() {
+    _ssid="$1"
+    _pass="$2"
+    _path="$3"
+
+    _dir=$(dirname "$_path")
+    [ -d "$_dir" ] || mkdir -p "$_dir" 2>/dev/null
+
+    if [ ! -s "$_path" ]; then
+        {
+            echo "ctrl_interface=/var/run/wpa_supplicant"
+            echo "update_config=1"
+        } > "$_path"
+    fi
+    chmod 600 "$_path" 2>/dev/null
+
+    if [ -n "$_pass" ]; then
+        _block=$(wpa_passphrase "$_ssid" "$_pass" | grep -v '^[[:space:]]*#')
+    else
+        _block="network={
+    ssid=\"$_ssid\"
+    key_mgmt=NONE
+}"
+    fi
+
+    # Remove old configuration with the same SSID
+    _tmp="${_path}.tmp.$$"
+    awk -v s="$_ssid" '
+        /^network[ \t]*=/ { inside = 1; buf = $0 "\n"; next }
+        inside {
+            buf = buf $0 "\n"
+            if ($0 ~ /^}/) {
+                inside = 0
+                if (index(buf, "ssid=\"" s "\"") == 0) printf "%s", buf
+                buf = ""
+            }
+            next
+        }
+        { print }
+    ' "$_path" > "$_tmp" && mv "$_tmp" "$_path"
+
+    # Append new block
+    printf '\n%s\n' "$_block" >> "$_path"
+}
+
+# ---------------- Wait for connection (with seconds display) ----------------
+
+wait_for_link() {
+    _max="$1"
+    _i=0
+    _spin='|/-\'
+    while [ "$_i" -lt "$_max" ]; do
+        _c=$(printf '%s' "$_spin" | cut -c $(( (_i % 4) + 1 )))
+        if iw dev "$WLAN_IFACE" link 2>/dev/null | grep -q "Connected"; then
+            printf '\rConnected! Took %d seconds        \n' "$_i"
+            return 0
+        fi
+        printf '\r%s Connecting... %d seconds elapsed' "$_c" "$_i"
+        sleep 1
+        _i=$((_i + 1))
+    done
+    printf '\rConnection timeout, waited %d seconds        \n' "$_i"
+    return 1
+}
+
+# ---------------- DHCP ----------------
+
+run_dhcp() {
+    msg "Obtaining IP address (DHCP)..."
+    if udhcpc -i "$WLAN_IFACE" -t "$DHCP_TRIES" -T "$DHCP_TIMEOUT" -n -q >/dev/null 2>&1; then
+        # Background lease renewal
+        udhcpc -i "$WLAN_IFACE" -b -p "$UDHCPC_PID" >/dev/null 2>&1
+        return 0
+    fi
+    return 1
+}
+
+# ---------------- ping test + exit confirmation ----------------
+
+do_ping_and_prompt() {
+    msg "Testing network connectivity: ping $PING_TARGET ..."
+    if ping -c 2 -W 3 "$PING_TARGET" >/dev/null 2>&1; then
+        msg "Network is reachable!"
+        printf 'Exit script? (y/N): '
+        read _ans
+        case "$_ans" in
+            y|Y|yes|YES)
+                msg "Exiting script"
+                exit 0
+                ;;
+            *)
+                msg "Returning to main menu"
+                ;;
+        esac
+    else
+        err "ping $PING_TARGET failed, network unreachable"
+    fi
+}
+
+# ---------------- Connection flow ----------------
+
+do_connect() {
+    scan_wifi
+
+    if [ ! -s "$SCAN_FILE" ]; then
+        msg "No WiFi found"
+        return 1
+    fi
+    n=$(wc -l < "$SCAN_FILE")
+
+    msg "Available WiFi:"
+    printf '   %2d) Manually enter SSID\n' 0
+    i=1
+    while IFS= read -r line; do
+        printf '   %2d) %s\n' "$i" "$line"
+        i=$((i + 1))
+    done < "$SCAN_FILE"
+
+    printf 'Select [0-%d]: ' "$n"
+    read idx
+
+    case "$idx" in
+        ''|*[!0-9]*) err "Invalid input"; return 1 ;;
+    esac
+
+    if [ "$idx" -eq 0 ]; then
+        printf 'Enter SSID: '
+        read ssid
+    elif [ "$idx" -ge 1 ] && [ "$idx" -le "$n" ]; then
+        ssid=$(sed -n "${idx}p" "$SCAN_FILE")
+    else
+        err "Out of range"
+        return 1
+    fi
+
+    [ -n "$ssid" ] || { err "SSID is empty"; return 1; }
+
+    # Input password
+    printf 'Enter WiFi password (leave empty for open network): '
+    stty -echo 2>/dev/null
+    read pass
+    stty echo 2>/dev/null
+    echo
+
+    # Save path
+    printf 'Password save path [default %s]: ' "$DEFAULT_WPA_CONF"
+    read save_path
+    [ -z "$save_path" ] && save_path="$DEFAULT_WPA_CONF"
+
+    write_wpa_conf "$ssid" "$pass" "$save_path" || {
+        err "Failed to write configuration file"
+        return 1
+    }
+    msg "Configuration saved to: $save_path"
+
+    # Restart wpa_supplicant
+    stop_wpa
+    wifi_up
+
+    msg "Starting wpa_supplicant..."
+    if ! wpa_supplicant -B -i "$WLAN_IFACE" -c "$save_path" -P "$WPA_PID"; then
+        err "Failed to start wpa_supplicant"
+        return 1
+    fi
+
+    # Wait for association, show seconds
+    if ! wait_for_link "$CONNECT_WAIT"; then
+        err "WiFi connection timed out"
+        stop_wpa
+        return 1
+    fi
+
+    # Obtain IP
+    if ! run_dhcp; then
+        err "DHCP failed to obtain IP"
+        return 1
+    fi
+
+    msg "WiFi connected successfully!"
+
+    # ping test + exit confirmation
+    do_ping_and_prompt
+}
+
+# ---------------- Status ----------------
+
+show_status() {
+    msg "=== WiFi Status ==="
+    if iw dev "$WLAN_IFACE" link 2>/dev/null | grep -q "Connected"; then
+        iw dev "$WLAN_IFACE" link
+        echo
+        msg "=== IP Address ==="
+        ip addr show "$WLAN_IFACE" 2>/dev/null | grep "inet "
+    else
+        msg "Not connected"
+    fi
+}
+
+# ---------------- Main menu ----------------
+
+main_menu() {
+    while :; do
+        echo
+        echo "========== WiFi Management =========="
+        echo "  1) Scan WiFi"
+        echo "  2) Connect WiFi"
+        echo "  3) Turn off WiFi"
+        echo "  4) View connection status"
+        echo "  5) Test network (ping $PING_TARGET)"
+        echo "  0) Exit"
+        echo "===================================="
+        printf 'Select: '
+        read choice
+
+        case "$choice" in
+            1) do_scan_and_show; pause ;;
+            2) do_connect; pause ;;
+            3) wifi_down; msg "WiFi turned off"; pause ;;
+            4) show_status; pause ;;
+            5) do_ping_and_prompt; pause ;;
+            0) exit 0 ;;
+            *) err "Invalid choice"; sleep 1 ;;
+        esac
+    done
+}
+
+# ---------------- Entry point ----------------
+
+need_root
+need_cmd ip
+need_cmd iw
+need_cmd wpa_supplicant
+need_cmd wpa_passphrase
+need_cmd udhcpc
+need_cmd ping
+
+main_menu

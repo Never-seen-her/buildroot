@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RK 交互式服务器</title>
+</head>
+<body>
+  <h1>BusyBox httpd 交互示例</h1>
+
+  <h2>提交一条消息</h2>
+  <form action="/cgi-bin/save.sh" method="GET">
+    <input type="text" name="msg" placeholder="输入内容" required>
+    <button type="submit">保存到 /tmp</button>
+  </form>
+
+  <h2>查看已保存内容</h2>
+  <a href="/cgi-bin/list.sh">刷新列表</a>
+
+  <h2>上传一个文件</h2>
+  <input type="file" id="file">
+  <button id="btn">上传</button>
+  <pre id="out"></pre>
+
+<script>
+document.getElementById('btn').addEventListener('click', () => {
+  const file = document.getElementById('file').files[0];
+  const out = document.getElementById('out');
+  if (!file) { out.textContent = '请选择文件'; return; }
+
+  out.textContent = '上传中...';
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/cgi-bin/upload.sh?filename=' + encodeURIComponent(file.name));
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      out.textContent = '上传中 ' + Math.round(e.loaded / e.total * 100) + '%';
+    }
+  };
+  xhr.onload  = () => out.textContent = 'HTTP ' + xhr.status + '\n\n' + xhr.responseText;
+  xhr.onerror = () => out.textContent = '网络错误';
+  xhr.ontimeout = () => out.textContent = '超时';
+  xhr.timeout = 0; // 不超时
+  xhr.send(file);
+});
+</script>
+</body>
+</html>

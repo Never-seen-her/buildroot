@@ -29,13 +29,18 @@ rm -f "${TARGET_DIR}/usr/lib/libgomp.so"*
 #           依赖固件
 #==========================================================
 # usb wifi
-mkdir -p "${TARGET_DIR}/lib/firmware/rtw88"
-cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/rtw88/"
+#move to kernel image(CONFIG_EXTRA_FIRMWARE)
+#mkdir -p "${TARGET_DIR}/lib/firmware/rtw88"
+#cp -f "${SCRIPT_DIR}/package/wifi/rtw8723d_fw.bin" "${TARGET_DIR}/lib/firmware/rtw88/"
 
 #==========================================================
 #           etc 系统个性化配置 相关
 #==========================================================
 sh "${SCRIPT_DIR}/etc/profile_script" "${TARGET_DIR}"
+
+cp "${SCRIPT_DIR}/package/wifi/wifi_scan" "${TARGET_DIR}/usr/bin/wifi_scan"
+mkdir -p "${TARGET_DIR}/usr/share/icons/"
+cp -rf "${SCRIPT_DIR}/package/icons/"* "${TARGET_DIR}/usr/share/icons/"
 
 #  增加远程ssh root 登陆权限
 #sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
@@ -64,4 +69,38 @@ cp -r "${SCRIPT_DIR}/etc/xdg/weston/weston.ini" "${TARGET_DIR}/etc/xdg/weston/"
 #  weston and every process it spawns)
 cp -f "${SCRIPT_DIR}/etc/init.d/S99weston" "${TARGET_DIR}/etc/init.d/S99weston"
 chmod 755 "${TARGET_DIR}/etc/init.d/S99weston"
+
+# tailscale
+cp "${SCRIPT_DIR}/package/tailscale/tailscaled" "${TARGET_DIR}/usr/bin/tailscaled"
+chmod 755 "${TARGET_DIR}/usr/bin/tailscaled"
+cp "${SCRIPT_DIR}/package/tailscale/tailscale" "${TARGET_DIR}/usr/bin/tailscale"
+chmod 755 "${TARGET_DIR}/usr/bin/tailscale"
+
+mkdir -p "${TARGET_DIR}/var/lib/tailscale"
+cp "${SCRIPT_DIR}/package/tailscale/tailscaled.state" "${TARGET_DIR}/var/lib/tailscale/tailscaled.state"
+chmod 644 "${TARGET_DIR}/var/lib/tailscale/tailscaled.state"
+
+cp -f "${SCRIPT_DIR}/etc/init.d/S90tailscale" "${TARGET_DIR}/etc/init.d/S90tailscale"
+chmod 755 "${TARGET_DIR}/etc/init.d/S90tailscale"
+
+mkdir -p "${TARGET_DIR}/root/.cloudflared"
+#cp "${SCRIPT_DIR}/package/cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/cert.pem"
+cp "${SCRIPT_DIR}/package/cloudflared/sec.json" "${TARGET_DIR}/root/.cloudflared/sec.json"
+chmod 700 "${TARGET_DIR}/root/.cloudflared"
+chmod 600 "${TARGET_DIR}/root/.cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/sec.json"
+mkdir -p "${TARGET_DIR}/etc/cloudflared"
+cp "${SCRIPT_DIR}/package/cloudflared/config.yml" "${TARGET_DIR}/etc/cloudflared/config.yml"
+cp -f "${SCRIPT_DIR}/etc/init.d/S92cloudflared" "${TARGET_DIR}/etc/init.d/S92cloudflared"
+chmod 755 "${TARGET_DIR}/etc/init.d/S92cloudflared"
+cp "${SCRIPT_DIR}/package/cloudflared/cloudflared" "${TARGET_DIR}/usr/bin/cloudflared"
+chmod 755 "${TARGET_DIR}/usr/bin/cloudflared"
+
+
+# BusyBox httpd for the local web UI
+cp -f "${SCRIPT_DIR}/etc/init.d/S95httpd" "${TARGET_DIR}/etc/init.d/S95httpd"
+chmod 755 "${TARGET_DIR}/etc/init.d/S95httpd"
+
+mkdir -p "${TARGET_DIR}/var/www"
+cp -r "${SCRIPT_DIR}/package/www/"* "${TARGET_DIR}/var/www/"
+chmod -R 755 "${TARGET_DIR}/var/www/"
 
