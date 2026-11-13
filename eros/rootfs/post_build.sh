@@ -44,6 +44,10 @@ cp -rf "${SCRIPT_DIR}/package/icons/"* "${TARGET_DIR}/usr/share/icons/"
 
 #  增加远程ssh root 登陆权限
 #sh "${SCRIPT_DIR}/etc/sshd_script" "${TARGET_DIR}"
+
+# # 修改inittab,tty配置
+# sh "${SCRIPT_DIR}/etc/inittab_script" "${TARGET_DIR}"
+
 #==========================================================
 #           /etc/init.d 相关
 #==========================================================
@@ -85,9 +89,10 @@ chmod 755 "${TARGET_DIR}/etc/init.d/S90tailscale"
 
 mkdir -p "${TARGET_DIR}/root/.cloudflared"
 #cp "${SCRIPT_DIR}/package/cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/cert.pem"
+# chmod 600 "${TARGET_DIR}/root/.cloudflared/cert.pem"
 cp "${SCRIPT_DIR}/package/cloudflared/sec.json" "${TARGET_DIR}/root/.cloudflared/sec.json"
 chmod 700 "${TARGET_DIR}/root/.cloudflared"
-chmod 600 "${TARGET_DIR}/root/.cloudflared/cert.pem" "${TARGET_DIR}/root/.cloudflared/sec.json"
+chmod 600 "${TARGET_DIR}/root/.cloudflared/sec.json"
 mkdir -p "${TARGET_DIR}/etc/cloudflared"
 cp "${SCRIPT_DIR}/package/cloudflared/config.yml" "${TARGET_DIR}/etc/cloudflared/config.yml"
 cp -f "${SCRIPT_DIR}/etc/init.d/S92cloudflared" "${TARGET_DIR}/etc/init.d/S92cloudflared"
@@ -103,4 +108,35 @@ chmod 755 "${TARGET_DIR}/etc/init.d/S95httpd"
 mkdir -p "${TARGET_DIR}/var/www"
 cp -r "${SCRIPT_DIR}/package/www/"* "${TARGET_DIR}/var/www/"
 chmod -R 755 "${TARGET_DIR}/var/www/"
+
+#npu
+NPU_PACKAGE_DIR="${SCRIPT_DIR}/package/npu"
+NPU_FIRMWARE_DIR="${TARGET_DIR}/usr/lib/firmware/npu"
+NPU_BIN_DIR="${TARGET_DIR}/usr/bin"
+
+for NPU_FILE in MiniLoaderAll.bin uboot.img trust.img boot.img \
+		upgrade_tool npu_transfer_proxy npu-power npu-upgrade.sh; do
+	if [[ ! -r "${NPU_PACKAGE_DIR}/${NPU_FILE}" ]]; then
+		echo "Missing NPU package file: ${NPU_PACKAGE_DIR}/${NPU_FILE}" >&2
+		exit 1
+	fi
+done
+
+mkdir -p "${NPU_FIRMWARE_DIR}" "${NPU_BIN_DIR}"
+cp -f "${NPU_PACKAGE_DIR}/MiniLoaderAll.bin" \
+	"${NPU_PACKAGE_DIR}/uboot.img" \
+	"${NPU_PACKAGE_DIR}/trust.img" \
+	"${NPU_PACKAGE_DIR}/boot.img" \
+	"${NPU_FIRMWARE_DIR}/"
+
+cp -f "${NPU_PACKAGE_DIR}/upgrade_tool" \
+	"${NPU_PACKAGE_DIR}/npu_transfer_proxy" \
+	"${NPU_PACKAGE_DIR}/npu-power" \
+	"${NPU_PACKAGE_DIR}/npu-upgrade.sh" \
+	"${NPU_BIN_DIR}/"
+chmod 755 "${NPU_BIN_DIR}/upgrade_tool" \
+	"${NPU_BIN_DIR}/npu_transfer_proxy" \
+	"${NPU_BIN_DIR}/npu-power" \
+	"${NPU_BIN_DIR}/npu-upgrade.sh"
+
 
