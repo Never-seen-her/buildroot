@@ -1,17 +1,34 @@
 #!/bin/sh
+set -eu
 
-TARGET_DIR="$1"
-MARKER="# profile settings added by buildroot eros"
+PROFILE="$1/etc/profile"
+TEMP_PROFILE=$(mktemp "${PROFILE}.XXXXXX")
+trap 'rm -f "$TEMP_PROFILE"' 0
 
-if grep -Fxq "$MARKER" "${TARGET_DIR}/etc/profile"; then
-    # 已存在，可替换或跳过
-    echo "PS1 already customized, skipping"
-else
-    cat >> "${TARGET_DIR}/etc/profile" <<'EOF'
+{
+    # Remove previous Eros settings and duplicate prompts from older builds.
+    perl -0777 -pe '
+        s/^\n?# BEGIN Buildroot Eros settings\n.*?^# END Buildroot Eros settings(?:\n|\z)//gms;
+        die "Unterminated Buildroot Eros settings block\n" if /^# BEGIN Buildroot Eros settings$/m;
+        s/^\n# Custom prompt\nexport PS1=\x27\\e\[01;34m\\u\@\$PWD\\e\[00m\$ \x27(?:\n|\z)//gm;
+        $_ .= "\n" if length && !/\n\z/;
+    ' < "$PROFILE"
 
-# Custom prompt
-export PS1='\e[01;34m\u@$PWD\e[00m$ '
-EOF
+    cat <<'EOF'
+
+# BEGIN Buildroot Eros settings
+if [ -n "${PS1-}" ]; then
+    export PS1='\e[01;34m\u@$PWD\e[00m$ '
 fi
 
-exit 0
+if [ -t 0 ] && [ "$(tty 2>/dev/null)" = "/dev/ttyS2" ]; then
+    stty isig intr '^C' -ixon -ixoff -crtscts
+fi
+# END Buildroot Eros settings
+EOF
+} > "$TEMP_PROFILE"
+
+if ! cmp -s "$PROFILE" "$TEMP_PROFILE"; then
+    chmod --reference="$PROFILE" "$TEMP_PROFILE"
+    mv -f "$TEMP_PROFILE" "$PROFILE"
+fi
