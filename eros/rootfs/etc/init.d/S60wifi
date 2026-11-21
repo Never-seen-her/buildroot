@@ -7,7 +7,6 @@ CONF=/etc/wpa_supplicant.conf
 STATE=/run/rk-wifi
 CTRL=$STATE/control
 DRIVER=/sys/bus/usb/drivers/rtw88_8723du
-USB_IF=1-1:1.2
 
 die() { echo "WiFi: $*" >&2; exit 1; }
 [ "$(id -u)" = 0 ] || die 'root required'
@@ -51,14 +50,21 @@ stop_wifi() {
     echo "WiFi stopped"
 }
 
+find_usb_interface() {
+    device=$(readlink -f "/sys/class/net/$IFACE/device") || return 1
+    [ "$(readlink -f "$device/driver")" = "$DRIVER" ] || return 1
+    printf '%s\n' "${device##*/}"
+}
+
 reset_driver() {
-    echo "Reinitializing $USB_IF with rtw88_8723du..."
+    usb_if=$1
+    echo "Reinitializing $usb_if with rtw88_8723du..."
     [ -w "$DRIVER/unbind" ] && [ -w "$DRIVER/bind" ] || return 1
-    if [ -e "$DRIVER/$USB_IF" ]; then
-        printf '%s' "$USB_IF" > "$DRIVER/unbind" || return 1
+    if [ -e "$DRIVER/$usb_if" ]; then
+        printf '%s' "$usb_if" > "$DRIVER/unbind" || return 1
         sleep 2
     fi
-    printf '%s' "$USB_IF" > "$DRIVER/bind" || return 1
+    printf '%s' "$usb_if" > "$DRIVER/bind" || return 1
     count=0
     while [ ! -e "/sys/class/net/$IFACE" ] && [ "$count" -lt 10 ]; do
         sleep 1
@@ -110,10 +116,15 @@ trap 'rmdir /run/rk-wifi.lock 2>/dev/null' 0
 trap 'exit 1' HUP INT TERM
 mkdir -p "$STATE" || die 'cannot create runtime directory'
 chmod 700 "$STATE" || die 'cannot secure runtime directory'
+case "$1" in
+    restart|reload)
+        usb_interface=$(find_usb_interface) || die "cannot locate $IFACE under $DRIVER"
+        ;;
+esac
 stop_wifi || die 'stop failed; refusing to continue'
 case "$1" in
     stop) exit 0 ;;
-    restart|reload) reset_driver || die 'driver reinitialization failed; WiFi remains stopped' ;;
+    restart|reload) reset_driver "$usb_interface" || die 'driver reinitialization failed; WiFi remains stopped' ;;
 esac
 if ! start_wifi; then
     stop_wifi
