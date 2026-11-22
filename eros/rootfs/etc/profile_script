@@ -17,6 +17,8 @@ trap 'rm -f "$TEMP_PROFILE"' 0
     cat <<'EOF'
 
 # BEGIN Buildroot Eros settings
+export PYTHONPYCACHEPREFIX="/tmp/python-pycache-$(id -u)"
+export HISTFILE=/tmp/.ash-history
 if [ -n "${PS1-}" ]; then
     export PS1='\e[01;34m\u@$PWD\e[00m$ '
 fi
