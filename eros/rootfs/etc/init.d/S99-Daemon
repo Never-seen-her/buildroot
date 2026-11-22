@@ -1,0 +1,188 @@
+#!/bin/sh
+# Add an entry here and define its check_<name> and handle_<name> functions.
+CHECKS='wifi httpd tailscale cloudflared'
+INTERVAL=60
+HTTP_PORT=8080
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+STATE=/tmp/rk-daemon
+LOG=$STATE/daemon.log
+ENTRY=$(readlink -f "$0")
+WIFI_INIT=/etc/init.d/S60wifi
+HTTP_PORT_HEX=$(printf '%04X' "$HTTP_PORT")
+
+now() { read -r up _ < /proc/uptime; echo "${up%%.*}"; }
+
+log() {
+    local bytes
+    if [ -f "$LOG" ]; then
+        bytes=$(wc -c < "$LOG")
+        [ "$bytes" -lt 131072 ] || mv -f "$LOG" "$LOG.1"
+    fi
+    printf '%s %s\n' "$(TZ=CST-8 date '+%Y-%m-%dT%H:%M:%S+08:00')" "$*" >> "$LOG"
+}
+
+bounded() {
+    local seconds=$1 pid due
+    shift
+    setsid "$@" 8>&- &
+    pid=$!
+    due=$(($(now) + seconds))
+    while kill -0 "$pid" 2>/dev/null; do
+        if [ "$(now)" -ge "$due" ]; then
+            kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null
+            wait "$pid" 2>/dev/null
+            return 124
+        fi
+        sleep 1
+    done
+    wait "$pid"
+}
+
+run_action() {
+    local service=$1 action=$2 script=$3 rc=0
+    [ -x "$script" ] || { log "$service action=skip service_script_missing"; return 1; }
+    [ ! -f "$STATE/$service.paused" ] || return 0
+    bounded 90 "$script" "$action" >/dev/null 2>&1 || rc=$?
+    log "$service action=$action exit=$rc"
+    return "$rc"
+}
+
+check_wifi() {
+    local carrier
+    read -r carrier 2>/dev/null < /sys/class/net/wlan0/carrier || return 1
+    [ "$carrier" = 1 ] && ip -o -4 addr show dev wlan0 | grep -q ' inet ' &&
+        ip -4 route show default dev wlan0 | grep -q '^default'
+}
+
+handle_wifi() {
+    local link reason
+    [ ! -d /run/rk-wifi.lock ] || { log 'wifi action=skip init_busy'; return; }
+    [ -d /sys/class/net/wlan0 ] || { log 'wifi reason=interface_missing action=skip'; return; }
+    link=$(bounded 4 iw dev wlan0 link 2>/dev/null) || { log 'wifi action=skip probe_unavailable'; return; }
+    case "$link" in
+        'Connected to '*) reason=no_ipv4_or_route ;;
+        'Not connected'*) reason=disconnected ;;
+        *) log 'wifi action=skip unknown_link'; return ;;
+    esac
+    check_wifi && return 0
+    log "wifi reason=$reason"
+    run_action wifi restart "$WIFI_INIT"
+}
+
+check_httpd() {
+    awk -v port=":$HTTP_PORT_HEX" '$2 ~ (port "$") && $4=="0A" {found=1;exit} END {exit !found}' /proc/net/tcp /proc/net/tcp6 2>/dev/null
+}
+
+recheck_and_restart() {
+    "check_$1" && return 0
+    run_action "$1" restart "$2"
+}
+
+handle_httpd() { recheck_and_restart httpd /etc/init.d/S95httpd; }
+check_tailscale() { pidof tailscaled >/dev/null 2>&1; }
+handle_tailscale() { recheck_and_restart tailscale /etc/init.d/S90tailscale; }
+check_cloudflared() { pidof cloudflared >/dev/null 2>&1; }
+handle_cloudflared() { recheck_and_restart cloudflared /etc/init.d/S92cloudflared; }
+
+inspect() {
+    local item=$1 count=0 due=0 current delay
+    [ ! -f "$STATE/$item.paused" ] || return 0
+    if "check_$item"; then
+        if [ -f "$STATE/$item.retry" ]; then
+            rm -f "$STATE/$item.retry"
+            log "$item state=recovered"
+        fi
+        return 0
+    fi
+    current=$(now)
+    if [ -r "$STATE/$item.retry" ]; then
+        read -r count due < "$STATE/$item.retry"
+    fi
+    count=${count:-0}
+    due=${due:-0}
+    case "$count:$due" in ''|*[!0-9:]*) count=0; due=0 ;; esac
+    [ "$current" -ge "$due" ] || return 0
+    count=$((count + 1))
+    case "$count" in 1|2) delay=$INTERVAL ;; 3) delay=240 ;; *) delay=600 ;; esac
+    log "$item state=abnormal attempt=$count"
+    "handle_$item" "$count"
+    printf '%s %s\n' "$count" "$((current + delay))" > "$STATE/$item.retry"
+}
+
+running() {
+    local pid
+    read -r pid 2>/dev/null < "$STATE/pid" || return 1
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 1 ] && kill -0 "$pid" 2>/dev/null || return 1
+    tr '\000' '\n' 2>/dev/null < "/proc/$pid/cmdline" | awk -v path="$ENTRY" '
+        $0==path {entry=1} END {exit !entry}' || return 1
+    echo "$pid"
+}
+
+prepare() {
+    [ "$(id -u)" = 0 ] || { echo 'S99-Daemon requires root' >&2; return 1; }
+    umask 077
+    mkdir -m 700 "$STATE" 2>/dev/null || :
+    [ ! -L "$STATE" ] && [ -d "$STATE" ] &&
+        [ "$(ls -dn "$STATE" | awk '{print $1, $3}')" = 'drwx------ 0' ] || return 1
+    local item
+    for item in $CHECKS; do
+        case "$item" in ''|*[!a-z0-9_]*) return 1 ;; esac
+        command -v "check_$item" >/dev/null && command -v "handle_$item" >/dev/null || return 1
+    done
+}
+
+daemon_loop() {
+    local item started remaining sleeper=
+    exec 8>"$STATE/daemon.lock" || return 1
+    flock -n 8 || return 0
+    echo "$$" > "$STATE/pid"
+    trap 'if [ -n "$sleeper" ]; then kill "$sleeper" 2>/dev/null; fi; rm -f "$STATE/pid"; exit 0' TERM INT HUP
+    log "daemon started interval=${INTERVAL}s checks=$CHECKS"
+    while :; do
+        started=$(now)
+        for item in $CHECKS; do inspect "$item"; done
+        remaining=$((started + INTERVAL - $(now)))
+        [ "$remaining" -gt 0 ] || remaining=1
+        (exec /bin/sleep "$remaining") 8>&- &
+        sleeper=$!
+        wait "$sleeper"
+        sleeper=
+    done
+}
+
+start_daemon() {
+    running >/dev/null && return 0
+    RK_DAEMON_CHILD=1 start-stop-daemon -S -b -p "$STATE/pid" -x /bin/sh -- "$ENTRY"
+}
+
+stop_daemon() {
+    local count=0
+    running >/dev/null || return 0
+    start-stop-daemon -K -p "$STATE/pid" -x /bin/sh -s TERM || return 1
+    while running >/dev/null; do
+        [ "$count" -lt 95 ] || return 1
+        sleep 1
+        count=$((count + 1))
+    done
+}
+
+action=${1-start}
+case "$#:$action" in
+    0:start|1:start|1:stop|1:restart) ;;
+    *)
+        echo "Usage: $0 [start|stop|restart]" >&2
+        exit 2 ;;
+esac
+prepare || exit 1
+if [ "${RK_DAEMON_CHILD:-0}" = 1 ] && [ "$#" -eq 0 ]; then
+    daemon_loop
+    exit $?
+fi
+case "$action" in
+    start) start_daemon ;;
+    stop) stop_daemon ;;
+    restart) stop_daemon && start_daemon ;;
+esac

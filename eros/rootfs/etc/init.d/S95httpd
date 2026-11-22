@@ -9,8 +9,11 @@ WWW_DIR="/tmp/www"
 
 start() {
 	printf "Starting BusyBox httpd: "
-	mkdir -p "$WWW_DIR" || return 1
-	cp -a /var/www/. "$WWW_DIR/" || return 1
+	if ! mkdir -p "$WWW_DIR" || ! chmod a+rwx "$WWW_DIR"; then
+		echo "FAIL"
+		return 1
+	fi
+	#cp -a /var/www/. "$WWW_DIR/"
 
 	start-stop-daemon --start --background --make-pidfile \
 		--pidfile "$PIDFILE" --exec "$DAEMON" -- \

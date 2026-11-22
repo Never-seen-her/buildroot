@@ -1,7 +1,13 @@
 tunnel: rk-tunnel
 credentials-file: /root/.cloudflared/sec.json
 
+protocol: http2
+
 ingress:
   - hostname: lkeros.top
-    service: http://localhost:8080
+    service: http://127.0.0.1:8080
+    originRequest:
+      connectTimeout: 30s
+      keepAliveConnections: 20
+      keepAliveTimeout: 90s
   - service: http_status:404

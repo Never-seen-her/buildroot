@@ -1,0 +1,9 @@
+#!/bin/sh
+
+# 传入的参数是目标根文件系统的路径
+TARGET_DIR=$1
+
+# 使用 sed 命令精确修改 inittab 中针对 ttyS2 的 getty 行
+# 假设 menuconfig 已生成：ttyS2::respawn:/sbin/getty -L ttyS2 1500000 vt100
+sed -i 's|^ttyS2::respawn:/sbin/getty|ttyS2::respawn:/sbin/setsid /sbin/getty|' \
+    "${TARGET_DIR}/etc/inittab"

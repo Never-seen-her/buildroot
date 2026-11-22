@@ -1,48 +1,133 @@
 #!/bin/sh
-#
-# Start usb WiFi network
-#
+# RK3399Pro / BusyBox: wlan0 only. Run as root.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+IFACE=wlan0
+CONF=/etc/wpa_supplicant.conf
+STATE=/run/rk-wifi
+CTRL=$STATE/control
+DRIVER=/sys/bus/usb/drivers/rtw88_8723du
 
-WLAN_IFACE="wlan0"
-WPA_CONF="/etc/wpa_supplicant.conf"
+die() { echo "WiFi: $*" >&2; exit 1; }
+[ "$(id -u)" = 0 ] || die 'root required'
+case "$1" in start|stop|restart|reload|status) ;; *) die "Usage: $0 {start|stop|restart|reload|status}" ;; esac
 
-case "$1" in
-  start)
-    printf "Starting usb WiFi network: "
-    # Unblock wifi if possible
-    [ -x /usr/sbin/rfkill ] && rfkill unblock wifi
-    # Bring interface up
-    ip link set $WLAN_IFACE up
-    # Start wpa_supplicant
-    wpa_supplicant -B -i $WLAN_IFACE -c $WPA_CONF
-    if [ $? -ne 0 ]; then
-        echo "FAIL (wpa_supplicant)"
-        exit 1
-    fi
-    # Obtain IP with timeout (udhcpc -t tries)
-    udhcpc -i $WLAN_IFACE -t 5 -T 2 && iw dev $WLAN_IFACE link &
-    if [ $? -eq 0 ]; then
-        echo "OK"
-    else
-        echo "FAIL (DHCP)"
-        exit 1
-    fi
-    ;;
-  stop)
-    printf "Stopping WiFi network: "
-    pkill -f "wpa_supplicant -i $WLAN_IFACE" 2>/dev/null
-    pkill -f "udhcpc -i $WLAN_IFACE" 2>/dev/null
-    ip link set $WLAN_IFACE down 2>/dev/null
-    echo "OK"
-    ;;
-  restart|reload)
-    "$0" stop
+# Find only these daemons with an explicit matching interface argument.
+# This also handles instances launched by the old script, without PID files.
+wifi_pids() {
+    for entry in /proc/[0-9]*; do
+        [ -r "$entry/cmdline" ] || continue
+        tr '\000' '\n' < "$entry/cmdline" 2>/dev/null |
+        awk -v iface="$IFACE" '
+            NR==1 {sub(/^.*\//,"",$0); daemon=($0=="wpa_supplicant" || $0=="udhcpc"); next}
+            pending {if ($0==iface) found=1; pending=0}
+            $0=="-i" {pending=1}
+            $0=="-i" iface {found=1}
+            END {exit !(daemon && found)}
+        ' && echo "${entry##*/}"
+    done
+}
+
+stop_wifi() {
+    echo "Stopping $IFACE..."
+    pids=$(wifi_pids)
+    [ -z "$pids" ] || kill -TERM $pids 2>/dev/null
+    count=0
+    while [ -n "$(wifi_pids)" ] && [ "$count" -lt 5 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    pids=$(wifi_pids)
+    [ -z "$pids" ] || kill -KILL $pids 2>/dev/null
     sleep 1
-    "$0" start
-    ;;
-  *)
-    echo "Usage: $0 {start|stop|restart}"
-    exit 1
-esac
+    [ -z "$(wifi_pids)" ] || return 1
+    if [ -e "/sys/class/net/$IFACE" ]; then
+        ip link set "$IFACE" down || return 1
+        ip route flush dev "$IFACE" || return 1
+        ip addr flush dev "$IFACE" || return 1
+    fi
+    rm -f "$STATE/wpa.pid" "$STATE/dhcp.pid" "$CTRL/$IFACE"
+    echo "WiFi stopped"
+}
 
-exit $?
+find_usb_interface() {
+    device=$(readlink -f "/sys/class/net/$IFACE/device") || return 1
+    [ "$(readlink -f "$device/driver")" = "$DRIVER" ] || return 1
+    printf '%s\n' "${device##*/}"
+}
+
+reset_driver() {
+    usb_if=$1
+    echo "Reinitializing $usb_if with rtw88_8723du..."
+    [ -w "$DRIVER/unbind" ] && [ -w "$DRIVER/bind" ] || return 1
+    if [ -e "$DRIVER/$usb_if" ]; then
+        printf '%s' "$usb_if" > "$DRIVER/unbind" || return 1
+        sleep 2
+    fi
+    printf '%s' "$usb_if" > "$DRIVER/bind" || return 1
+    count=0
+    while [ ! -e "/sys/class/net/$IFACE" ] && [ "$count" -lt 10 ]; do
+        sleep 1
+        count=$((count + 1))
+    done
+    [ -e "/sys/class/net/$IFACE" ]
+}
+
+start_wifi() {
+    [ -r "$CONF" ] || { echo "Missing $CONF" >&2; return 1; }
+    [ -e "/sys/class/net/$IFACE" ] || return 1
+    mkdir -p "$CTRL" || return 1
+    chmod 700 "$STATE" "$CTRL" || return 1
+    if command -v rfkill >/dev/null 2>&1; then
+        rfkill unblock wifi || return 1
+    fi
+    ip link set "$IFACE" up || return 1
+    iw dev "$IFACE" set power_save off || return 1
+    wpa_supplicant -B -i "$IFACE" -c "$CONF" -C "$CTRL" -P "$STATE/wpa.pid" || return 1
+    echo 'Waiting for WiFi authentication (up to 40 seconds)...'
+    count=0
+    while [ "$count" -lt 40 ]; do
+        if wpa_cli -p "$CTRL" -i "$IFACE" status 2>/dev/null | grep -q '^wpa_state=COMPLETED$'; then
+            break
+        fi
+        sleep 1
+        count=$((count + 1))
+    done
+    [ "$count" -lt 40 ] || { echo 'WiFi authentication timed out' >&2; return 1; }
+    # Foreground until lease acquisition; then daemonize to maintain renewals.
+    # Do not use -q: a 7200-second lease must be renewed.
+    udhcpc -i "$IFACE" -p "$STATE/dhcp.pid" -n -t 5 -T 3 || return 1
+    ip -4 addr show dev "$IFACE" | grep -q 'inet ' || return 1
+    echo 'WiFi connected; DHCP lease acquired (Internet access not yet tested)'
+    iw dev "$IFACE" link
+    ip -4 addr show dev "$IFACE"
+}
+
+if [ "$1" = status ]; then
+    iw dev "$IFACE" link
+    ip addr show dev "$IFACE"
+    ip route
+    exit 0
+fi
+
+# Serialize operations. A stale lock is deliberately reported, not removed.
+mkdir /run/rk-wifi.lock 2>/dev/null || die 'another operation is running, or /run/rk-wifi.lock is stale'
+trap 'rmdir /run/rk-wifi.lock 2>/dev/null' 0
+trap 'exit 1' HUP INT TERM
+mkdir -p "$STATE" || die 'cannot create runtime directory'
+chmod 700 "$STATE" || die 'cannot secure runtime directory'
+case "$1" in
+    restart|reload)
+        usb_interface=$(find_usb_interface) || die "cannot locate $IFACE under $DRIVER"
+        ;;
+esac
+stop_wifi || die 'stop failed; refusing to continue'
+case "$1" in
+    stop) exit 0 ;;
+    restart|reload) reset_driver "$usb_interface" || die 'driver reinitialization failed; WiFi remains stopped' ;;
+esac
+if ! start_wifi; then
+    stop_wifi
+    die 'connection failed; WiFi stopped'
+fi
+
