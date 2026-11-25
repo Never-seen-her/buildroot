@@ -47,6 +47,8 @@ cp -rf "${SCRIPT_DIR}/package/icons/"* "${TARGET_DIR}/usr/share/icons/"
 
 # # 修改inittab,tty配置
 # sh "${SCRIPT_DIR}/etc/inittab_script" "${TARGET_DIR}"
+sed -i 's|^::sysinit:/bin/mount -o remount,rw /$|::sysinit:/bin/mount -o remount,rw,noatime /|' \
+    "${TARGET_DIR}/etc/inittab"
 
 #==========================================================
 #           /etc/init.d 相关
@@ -71,8 +73,8 @@ cp -r "${SCRIPT_DIR}/etc/xdg/weston/weston.ini" "${TARGET_DIR}/etc/xdg/weston/"
 # weston autostart + Wayland/WPE default environment variables
 # (started last so devices/firmware are ready; exported vars apply to
 #  weston and every process it spawns)
-cp -f "${SCRIPT_DIR}/etc/init.d/S99weston" "${TARGET_DIR}/etc/init.d/S99weston"
-chmod 755 "${TARGET_DIR}/etc/init.d/S99weston"
+cp -f "${SCRIPT_DIR}/etc/init.d/S97weston" "${TARGET_DIR}/etc/init.d/S97weston"
+chmod 755 "${TARGET_DIR}/etc/init.d/S97weston"
 
 # tailscale
 cp "${SCRIPT_DIR}/package/tailscale/tailscaled" "${TARGET_DIR}/usr/bin/tailscaled"
@@ -108,6 +110,10 @@ chmod 755 "${TARGET_DIR}/etc/init.d/S95httpd"
 mkdir -p "${TARGET_DIR}/var/www"
 cp -r "${SCRIPT_DIR}/package/www/"* "${TARGET_DIR}/var/www/"
 chmod -R 755 "${TARGET_DIR}/var/www/"
+
+# Service watchdog
+cp -f "${SCRIPT_DIR}/etc/init.d/S99-Daemon" "${TARGET_DIR}/etc/init.d/S99-Daemon" || exit 1
+chmod 755 "${TARGET_DIR}/etc/init.d/S99-Daemon" || exit 1
 
 #npu
 NPU_PACKAGE_DIR="${SCRIPT_DIR}/package/npu"
