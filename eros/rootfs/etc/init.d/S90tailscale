@@ -39,7 +39,7 @@ start() {
 		return "$status"
 	fi
 
-	# Wait for the local control socket before running tailscale up.
+	# Wait for the local control socket before running client commands.
 	count=0
 	while [ ! -S "$SOCKET" ] && [ "$count" -lt 10 ]; do
 		sleep 1
@@ -48,6 +48,11 @@ start() {
 
 	if [ ! -S "$SOCKET" ]; then
 		echo "FAIL (socket unavailable)"
+		return 1
+	fi
+
+	if ! "$CLIENT" --socket="$SOCKET" set --auto-update=false; then
+		echo "FAIL (failed to disable Tailscale auto-updates)"
 		return 1
 	fi
 

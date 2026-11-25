@@ -27,8 +27,7 @@ start() {
     start-stop-daemon --start --background --make-pidfile \
         --pidfile "$PIDFILE" --exec "$DAEMON" -- \
         --logfile "$LOG_FILE" \
-        --autoupdate-freq 24h0m0s \
-        --config /etc/cloudflared/config.yml tunnel run
+        --config /etc/cloudflared/config.yml tunnel --no-autoupdate run
     status=$?
     if [ "$status" -eq 0 ]; then
         echo "OK"
